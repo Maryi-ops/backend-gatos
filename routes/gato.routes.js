@@ -1,5 +1,6 @@
 import express from "express";
 import multer from "multer";
+import { capturarInfoSolicitud } from "../middlewares/auditoria.js";
 import {
   registrarGato,
   obtenerGatos,
@@ -9,6 +10,8 @@ import {
 } from "../controllers/gato.controller.js";
 
 const router = express.Router();
+
+router.use(capturarInfoSolicitud);
 
 const upload = multer({
   storage: multer.memoryStorage(),

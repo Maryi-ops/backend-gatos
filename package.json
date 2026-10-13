@@ -12,11 +12,13 @@
   "license": "ISC",
   "type": "module",
   "dependencies": {
+    "@emailjs/nodejs": "^5.0.2",
     "@opentelemetry/api": "^1.9.1",
     "@supabase/supabase-js": "^2.112.3",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
+    "express-rate-limit": "^8.7.1",
     "firebase-admin": "^14.2.0",
     "multer": "^2.2.0"
   }

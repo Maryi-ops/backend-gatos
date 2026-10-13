@@ -7,6 +7,7 @@ import {
   actualizarGato,
   eliminarGato,
   buscarGatos,
+  enviarGatosPorEmail,
 } from "../controllers/gato.controller.js";
 
 const router = express.Router();
@@ -33,6 +34,8 @@ router.put(
 );
 
 router.delete("/gato/:id", eliminarGato);
+
+router.get("/gatos/enviar-email", enviarGatosPorEmail);
 
 router.get("/gatos", obtenerGatos);
 

@@ -4,6 +4,7 @@ import rateLimit from "express-rate-limit";
 import db from "./firebase.js";
 import gatoRoutes from "./routes/gato.routes.js";
 import climaRoutes from "./routes/clima.routes.js";
+import estadisticasRoutes from "./routes/estadisticas.routes.js";
 
 const app = express();
 
@@ -43,6 +44,7 @@ app.use("/gatos", limiterGatos);
 // Rutas
 app.use(gatoRoutes);
 app.use(climaRoutes);
+app.use(estadisticasRoutes);
 
 // 404
 app.use((req, res) => {

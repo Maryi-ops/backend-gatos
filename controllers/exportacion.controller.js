@@ -1,45 +1,157 @@
+import ExcelJS from "exceljs";
 import PDFDocument from "pdfkit";
-import db from "../firebase.js";
+import { calcularEstadisticas } from "./estadisticas.controller.js";
 
-const calcularEstadisticas = async () => {
-  const snapshot = await db.collection("gatos").get();
-  const gatos = snapshot.docs.map((doc) => doc.data());
-  const edades = gatos.map((gato) => Number(gato.edad)).filter(Number.isFinite);
-  const pesos = gatos.map((gato) => Number(gato.peso)).filter(Number.isFinite);
-  const porRaza = {};
-  const porMes = {};
+export const exportarEstadisticasExcel = async (req, res) => {
+  try {
+    const stats = await calcularEstadisticas();
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = "Sistema de Gatos";
+    workbook.created = new Date();
 
-  gatos.forEach((gato) => {
-    const raza = String(gato.raza || "Sin raza");
-    porRaza[raza] = (porRaza[raza] || 0) + 1;
+    const estiloTitulo = {
+      font: { bold: true, size: 16, color: { argb: "FFFFFFFF" } },
+      fill: {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: "FF4472C4" },
+      },
+      alignment: { horizontal: "center", vertical: "middle" },
+    };
+    const estiloEncabezado = {
+      font: { bold: true, color: { argb: "FFFFFFFF" } },
+      fill: {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: "FF5B9BD5" },
+      },
+      alignment: { horizontal: "center" },
+    };
+    const agregarEncabezado = (hoja, titulos, color) => {
+      hoja.addRow([]);
+      hoja.addRow(titulos).eachCell((cell) => {
+        cell.style = {
+          ...estiloEncabezado,
+          fill: { type: "pattern", pattern: "solid", fgColor: { argb: color } },
+        };
+      });
+    };
+    const agregarTitulo = (hoja, rango, titulo, color = "FF4472C4") => {
+      hoja.mergeCells(rango);
+      const celda = rango.split(":")[0];
+      hoja.getCell(celda).value = titulo;
+      hoja.getCell(celda).style = {
+        ...estiloTitulo,
+        fill: { type: "pattern", pattern: "solid", fgColor: { argb: color } },
+      };
+      hoja.getRow(1).height = 28;
+    };
 
-    const fecha =
-      typeof gato.fecha?.toDate === "function"
-        ? gato.fecha.toDate()
-        : new Date(gato.fecha);
+    const hojaResumen = workbook.addWorksheet("Resumen");
+    agregarTitulo(hojaResumen, "A1:B1", "ESTADÍSTICAS DE GATOS");
+    hojaResumen.addRow([]);
+    hojaResumen.addRow(["Métrica", "Valor"]).eachCell((cell) => {
+      cell.style = estiloEncabezado;
+    });
+    [
+      ["Total de gatos", stats.total],
+      ["Promedio de edad (años)", stats.promedioEdad],
+      ["Promedio de peso (kg)", stats.promedioPeso],
+      ["Edad mínima", stats.edadMin ?? "—"],
+      ["Edad máxima", stats.edadMax ?? "—"],
+      ["Peso mínimo (kg)", stats.pesoMin ?? "—"],
+      ["Peso máximo (kg)", stats.pesoMax ?? "—"],
+      ["Fecha de generación", new Date().toLocaleString("es-ES")],
+    ].forEach(([label, valor]) => {
+      const row = hojaResumen.addRow([label, valor]);
+      row.getCell(1).font = { bold: true };
+    });
+    hojaResumen.getColumn(1).width = 28;
+    hojaResumen.getColumn(2).width = 24;
 
-    if (!Number.isNaN(fecha.getTime())) {
-      const mes = fecha.toISOString().slice(0, 7);
-      porMes[mes] = (porMes[mes] || 0) + 1;
+    const hojaRazas = workbook.addWorksheet("Por Raza");
+    agregarTitulo(hojaRazas, "A1:C1", "Distribución por Raza", "FF70AD47");
+    agregarEncabezado(hojaRazas, ["Raza", "Cantidad", "Porcentaje (%)"], "FF70AD47");
+    Object.entries(stats.porRaza)
+      .sort((a, b) => b[1] - a[1])
+      .forEach(([raza, cantidad]) => {
+        const porcentaje =
+          stats.total > 0
+            ? Number(((cantidad / stats.total) * 100).toFixed(1))
+            : 0;
+        hojaRazas.addRow([raza, cantidad, porcentaje]);
+      });
+    hojaRazas.getColumn(1).width = 25;
+    hojaRazas.getColumn(2).width = 12;
+    hojaRazas.getColumn(3).width = 16;
+
+    const hojaMeses = workbook.addWorksheet("Por Mes");
+    agregarTitulo(
+      hojaMeses,
+      "A1:B1",
+      "Gatos registrados por mes",
+      "FFED7D31"
+    );
+    agregarEncabezado(hojaMeses, ["Mes (YYYY-MM)", "Cantidad"], "FFED7D31");
+    Object.entries(stats.porMes)
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .forEach(([mes, cantidad]) => hojaMeses.addRow([mes, cantidad]));
+    hojaMeses.getColumn(1).width = 18;
+    hojaMeses.getColumn(2).width = 12;
+
+    const hojaGatos = workbook.addWorksheet("Listado de Gatos");
+    agregarTitulo(hojaGatos, "A1:F1", "Listado completo de gatos", "FF7030A0");
+    agregarEncabezado(
+      hojaGatos,
+      ["ID", "Nombre", "Edad", "Peso (kg)", "Raza", "Fecha de registro"],
+      "FF7030A0"
+    );
+    stats.gatos.forEach((gato) => {
+      const fecha = gato.fecha
+        ? typeof gato.fecha.toDate === "function"
+          ? gato.fecha.toDate()
+          : new Date(gato.fecha)
+        : null;
+      hojaGatos.addRow([
+        gato.id,
+        gato.nombre,
+        gato.edad,
+        gato.peso,
+        gato.raza,
+        fecha && !Number.isNaN(fecha.getTime())
+          ? fecha.toLocaleString("es-ES")
+          : "—",
+      ]);
+    });
+    [28, 18, 10, 12, 18, 22].forEach((ancho, indice) => {
+      hojaGatos.getColumn(indice + 1).width = ancho;
+    });
+
+    const nombreArchivo = `estadisticas-gatos-${new Date()
+      .toISOString()
+      .slice(0, 10)}.xlsx`;
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${nombreArchivo}"`
+    );
+
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (error) {
+    console.error("Error al generar Excel:", error);
+    if (!res.headersSent) {
+      res.status(500).json({
+        mensaje: "Error al generar el archivo Excel.",
+        error: error.message,
+      });
+    } else {
+      res.destroy(error);
     }
-  });
-
-  const promedio = (valores) =>
-    valores.length
-      ? valores.reduce((total, valor) => total + valor, 0) / valores.length
-      : 0;
-
-  return {
-    total: gatos.length,
-    promedioEdad: promedio(edades),
-    promedioPeso: promedio(pesos),
-    edadMin: edades.length ? Math.min(...edades) : null,
-    edadMax: edades.length ? Math.max(...edades) : null,
-    pesoMin: pesos.length ? Math.min(...pesos) : null,
-    pesoMax: pesos.length ? Math.max(...pesos) : null,
-    porRaza,
-    porMes,
-  };
+  }
 };
 
 export const exportarEstadisticasPDF = async (req, res) => {
